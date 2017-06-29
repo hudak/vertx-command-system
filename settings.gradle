@@ -1,0 +1,4 @@
+rootProject.name = 'reactive-examples'
+include 'repl-agent'
+include 'command-api'
+

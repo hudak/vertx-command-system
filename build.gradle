@@ -1,0 +1,43 @@
+plugins {
+    id "com.github.johnrengelman.shadow" version "2.0.0" apply false
+}
+
+ext {
+    vertxVersion = '3.4.2'
+    rxJavaVersion = '2.1.0'
+}
+
+allprojects {
+    group 'org.pentaho'
+    version '1.0-SNAPSHOT'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: "com.github.johnrengelman.shadow"
+
+    sourceCompatibility = 1.8
+
+    dependencies {
+        compile "io.vertx:vertx-core:$vertxVersion"
+        compile "io.vertx:vertx-service-proxy:$vertxVersion"
+
+        compile "io.reactivex.rxjava2:rxjava:$rxJavaVersion"
+
+        // https://mvnrepository.com/artifact/com.google.guava/guava
+//    compile group: 'com.google.guava', name: 'guava', version: '21.0'
+        testCompile group: 'junit', name: 'junit', version: '4.12'
+    }
+}
+
+configure(subprojects.findAll { it.name.endsWith('-agent') }) {
+    dependencies {
+        compile "io.vertx:vertx-service-discovery:$vertxVersion"
+        compile "io.vertx:vertx-hazelcast:$vertxVersion"
+        compile project(':command-api')
+    }
+}
