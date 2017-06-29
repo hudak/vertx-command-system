@@ -6,6 +6,7 @@ import io.reactivex.Completable;
 import io.reactivex.Maybe;
 import io.reactivex.Observable;
 import io.reactivex.Single;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.*;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.Json;
@@ -25,7 +26,7 @@ import java.util.NoSuchElementException;
  * Created by hudak on 6/28/17.
  */
 public class REPL extends AbstractVerticle {
-    private static Logger LOG = LoggerFactory.getLogger(REPL.class);
+    private static final Logger LOG = LoggerFactory.getLogger(REPL.class);
     private Console console;
     private ServiceDiscovery serviceDiscovery;
 
@@ -56,6 +57,11 @@ public class REPL extends AbstractVerticle {
         mainLoop();
     }
 
+    @Override
+    public void stop() throws Exception {
+        serviceDiscovery.close();
+    }
+
     private void print(Message<Object> message) {
         vertx.executeBlocking(future -> {
             // On a worker thread
@@ -72,12 +78,15 @@ public class REPL extends AbstractVerticle {
     }
 
     private void mainLoop() {
-        vertx.executeBlocking(this::blockingRead, this::runCommand);
+        Future<String> readLine = Maybe.fromCallable(this::blockingRead)
+                .subscribeOn(Schedulers.io())
+                .observeOn(RxAdapter.context(vertx))
+                .to(RxAdapter::future);
+        readLine.setHandler(this::runCommand);
     }
 
-    private void blockingRead(Future<String> future) {
-        String readLine = console.readLine("cmd> ");
-        future.complete(readLine);
+    private String blockingRead() {
+        return console.readLine("cmd> ");
     }
 
     private void runCommand(AsyncResult<String> asyncResult) {
@@ -99,7 +108,11 @@ public class REPL extends AbstractVerticle {
 
         command.flatMapSingleElement(this::findCommand)
                 .defaultIfEmpty(this::listCommands)
-                .flatMapCompletable(cmd -> runCommand(cmd, args))
+                .flatMapCompletable(cmd -> {
+                    Future<Void> done = Future.future();
+                    cmd.run(args, done);
+                    return RxAdapter.fromFuture(done).ignoreElement();
+                })
                 .onErrorResumeNext(e -> {
                     LOG.error("error running command", e);
                     return Completable.complete();
@@ -149,9 +162,4 @@ public class REPL extends AbstractVerticle {
         sent.to(RxAdapter::<Void>future).setHandler(handler);
     }
 
-    private Completable runCommand(Command command, List<String> args) {
-        Future<Void> done = Future.future();
-        command.run(args, done);
-        return RxAdapter.fromFuture(done).ignoreElement();
-    }
 }

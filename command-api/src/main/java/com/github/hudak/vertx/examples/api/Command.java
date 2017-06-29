@@ -17,7 +17,7 @@ import java.util.List;
  * Created by hudak on 6/28/17.
  */
 @ProxyGen
-//@FunctionalInterface
+@FunctionalInterface
 public interface Command {
     void run(List<String> arguments, Handler<AsyncResult<Void>> handler);
 
