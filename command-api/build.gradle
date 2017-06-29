@@ -1,3 +1,32 @@
 dependencies {
-    compile "io.vertx:vertx-codegen:$vertxVersion"
+    compileOnly "io.vertx:vertx-codegen:$vertxVersion"
+}
+
+def genSrc = project.file('build/src/main/generated')
+
+task annotationProcessing(type: JavaCompile, group: 'build') { // codegen
+    source = sourceSets.main.java
+    classpath = configurations.compile + configurations.compileOnly
+
+    destinationDir = genSrc
+    options.compilerArgs = [
+            "-proc:only",
+            "-processor", "io.vertx.codegen.CodeGenProcessor",
+            "-AoutputDirectory=${project.projectDir}/src/main"
+    ]
+}
+
+compileJava {
+    targetCompatibility = 1.8
+    sourceCompatibility = 1.8
+
+    dependsOn annotationProcessing
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs += genSrc
+        }
+    }
 }
