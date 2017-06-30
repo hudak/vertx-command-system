@@ -1,5 +1,6 @@
 rootProject.name = 'reactive-examples'
 include 'repl-agent'
 include 'command-api'
+include 'echo-agent'
 include 'common'
 

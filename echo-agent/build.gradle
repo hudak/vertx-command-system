@@ -1,0 +1,10 @@
+mainClassName = 'com.github.hudak.vertx.common.Launcher'
+
+shadowJar {
+    manifest {
+        attributes "Main-Verticle": 'com.github.hudak.vertx.echo.EchoService'
+    }
+    mergeServiceFiles {
+        include 'META-INF/services/io.vertx.core.spi.VerticleFactory'
+    }
+}
