@@ -39,10 +39,6 @@ public class RxAdapter<T> implements Handler<AsyncResult<T>> {
         return future;
     }
 
-    public static Scheduler context(Vertx vertx) {
-        return Schedulers.from(action -> vertx.runOnContext((nothing) -> action.run()));
-    }
-
     private final MaybeSubject<T> subject = MaybeSubject.create();
 
     @Override

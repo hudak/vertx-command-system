@@ -1,0 +1,11 @@
+dependencies {
+    compileOnly 'org.apache.spark:spark-core_2.11:2.1.0'
+}
+
+mainClassName = 'com.github.hudak.vertx.spark.Launcher'
+shadowJar {
+    relocate 'io.netty', 'vertx.io.netty'
+    manifest {
+        attributes "Main-Verticle": 'com.github.hudak.vertx.spark.Main'
+    }
+}

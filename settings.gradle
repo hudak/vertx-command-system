@@ -3,4 +3,5 @@ include 'repl-agent'
 include 'command-api'
 include 'echo-agent'
 include 'common'
+include 'spark-agent'
 
