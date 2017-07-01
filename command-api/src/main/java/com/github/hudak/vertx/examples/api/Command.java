@@ -19,7 +19,7 @@ import java.util.List;
 @ProxyGen
 @FunctionalInterface
 public interface Command {
-    void run(List<String> arguments, Handler<AsyncResult<Void>> handler);
+    void run(List<String> arguments, Handler<AsyncResult<String>> handler);
 
     @GenIgnore
     static Command createProxy(Vertx vertx, String address) {

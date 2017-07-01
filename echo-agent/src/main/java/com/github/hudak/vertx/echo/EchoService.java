@@ -2,10 +2,11 @@ package com.github.hudak.vertx.echo;
 
 import com.github.hudak.vertx.examples.api.Command;
 import io.reactivex.disposables.Disposables;
-import io.vertx.core.*;
-import io.vertx.core.eventbus.Message;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import io.vertx.core.eventbus.MessageConsumer;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -16,6 +17,8 @@ import io.vertx.serviceproxy.ProxyHelper;
 
 import java.util.List;
 import java.util.UUID;
+
+import static java.util.stream.Collectors.joining;
 
 /**
  * Created by hudak on 6/29/17.
@@ -58,25 +61,9 @@ public class EchoService extends AbstractVerticle implements Command {
     }
 
     @Override
-    public void run(List<String> arguments, Handler<AsyncResult<Void>> handler) {
-        log.info("Received command: %s", arguments);
-
-        String destination;
-        JsonArray data = new JsonArray();
-        if (arguments.stream().findFirst().filter("-to"::equals).isPresent()) {
-            destination = arguments.get(1);
-            arguments.stream().skip(2).forEach(data::add);
-        } else {
-            destination = "print";
-            arguments.forEach(data::add);
-        }
-        log.info("Sending to %s", destination);
-
-        // Send back on the event bus
-        Future<Message<Object>> received = Future.future();
-        vertx.eventBus().send(destination, data, received);
-
-        // Done when acknowledged
-        received.<Void>mapEmpty().setHandler(handler);
+    public void run(List<String> arguments, Handler<AsyncResult<String>> handler) {
+        log.info("echoing: %s", arguments);
+        String result = arguments.stream().collect(joining(" "));
+        handler.handle(Future.succeededFuture(result));
     }
 }

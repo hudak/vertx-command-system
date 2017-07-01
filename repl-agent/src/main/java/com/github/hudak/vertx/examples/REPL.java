@@ -8,8 +8,6 @@ import io.reactivex.Observable;
 import io.reactivex.Single;
 import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.*;
-import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -19,8 +17,10 @@ import io.vertx.servicediscovery.types.EventBusService;
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager;
 
 import java.io.Console;
+import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.regex.Pattern;
 
 /**
  * Created by hudak on 6/28/17.
@@ -47,12 +47,9 @@ public class REPL extends AbstractVerticle {
 
     @Override
     public void start() throws Exception {
-        // Read commands from System.in, publish to event bus
         console = System.console();
         serviceDiscovery = ServiceDiscovery.create(vertx);
 
-        // Register output listener
-        vertx.eventBus().consumer("print", this::print);
         // Start main loop
         mainLoop();
     }
@@ -62,82 +59,57 @@ public class REPL extends AbstractVerticle {
         serviceDiscovery.close();
     }
 
-    private void print(Message<Object> message) {
-        vertx.executeBlocking(future -> {
-            // On a worker thread
-            console.printf("%s%n", Json.encodePrettily(message.body()));
-            future.complete();
-        }, async -> {
-            // Back in the event loop
-            if (async.succeeded()) {
-                message.reply(null);
-            } else {
-                message.fail(1, async.cause().getMessage());
-            }
-        });
-    }
-
     private void mainLoop() {
-        Future<String> readLine = Maybe.fromCallable(this::blockingRead)
-                .subscribeOn(Schedulers.io())
-                .observeOn(RxAdapter.context(vertx))
-                .to(RxAdapter::future);
-        readLine.setHandler(this::runCommand);
+        // Read a line from console
+        Maybe<String> line = Maybe.fromCallable(() -> console.readLine("cmd> ")).subscribeOn(Schedulers.io());
+
+        // Split line into parts
+        Observable<String> parts = line.map(Pattern.compile("\\s+")::split).flattenAsObservable(Arrays::asList).cache();
+
+        // Locate command
+        Single<Command> command = parts.firstElement() // Get first element
+                .flatMapSingleElement(name -> name.isEmpty() ? Single.just(this::listCommands) : findCommand(name))
+                .toSingle(this::shutdown); // Null input -> shutdown
+        Single<List<String>> args = parts.skip(1).toList();
+
+        // Locate and run command
+        Single<Future<String>> futureResult = Single.zip(command, args, (cmd, arguments) -> {
+            Future<String> future = Future.future();
+            cmd.run(arguments, future);
+            return future;
+        });
+        Maybe<String> result = futureResult.flatMapMaybe(RxAdapter::fromFuture);
+
+        // Finish
+        Completable done = result
+                // Print output, if any
+                .observeOn(Schedulers.io()).doOnSuccess(console.writer()::println)
+                // Log any errors and ignore
+                .doOnError(e -> LOG.error("error running command", e)).onErrorComplete()
+                // Only interested in completion
+                .ignoreElement();
+
+        // repeat loop
+        done.subscribe(() -> vertx.runOnContext(nothing -> mainLoop()));
     }
 
-    private String blockingRead() {
-        return console.readLine("cmd> ");
-    }
-
-    private void runCommand(AsyncResult<String> asyncResult) {
-        // Executes on an event loop thread
-        if (asyncResult.failed()) {
-            LOG.error("there was a problem", asyncResult.cause());
-            vertx.close();
-            return;
-        }
-        if (asyncResult.result() == null) {
-            LOG.info("done");
-            vertx.close();
-            return;
-        }
-
-        Observable<String> line = Observable.fromArray(asyncResult.result().split("\\s+"));
-        Maybe<String> command = line.firstElement().filter(s -> !s.isEmpty());
-        List<String> args = line.skip(1).toList().blockingGet();
-
-        command.flatMapSingleElement(this::findCommand)
-                .defaultIfEmpty(this::listCommands)
-                .flatMapCompletable(cmd -> {
-                    Future<Void> done = Future.future();
-                    cmd.run(args, done);
-                    return RxAdapter.fromFuture(done).ignoreElement();
-                })
-                .onErrorResumeNext(e -> {
-                    LOG.error("error running command", e);
-                    return Completable.complete();
-                })
-                .doAfterTerminate(this::mainLoop)
-                .subscribe();
-    }
-
-    private Single<Command> findCommand(String command) {
+    private Single<Command> findCommand(String name) {
         JsonObject filter = new JsonObject()
                 .put("type", EventBusService.TYPE)
                 .put("service.interface", Command.class.getName())
-                .put("name", command);
+                .put("name", name);
 
         Future<Record> record = Future.future();
         serviceDiscovery.getRecord(filter, record);
 
         return RxAdapter.fromFuture(record)
-                .switchIfEmpty(Maybe.error(new NoSuchElementException("Command '" + command + "' not found")))
+                .switchIfEmpty(Maybe.error(new NoSuchElementException("Command '" + name + "' not found")))
                 .toSingle()
                 .map(found -> found.getLocation().getString(Record.ENDPOINT))
                 .map(endpoint -> Command.createProxy(vertx, endpoint));
     }
 
-    private void listCommands(List<String> args, Handler<AsyncResult<Void>> handler) {
+    private void listCommands(List<String> args, Handler<AsyncResult<String>> handler) {
         JsonObject filter = new JsonObject()
                 .put("type", EventBusService.TYPE)
                 .put("service.interface", Command.class.getName());
@@ -150,16 +122,14 @@ public class REPL extends AbstractVerticle {
                 .map(Record::getName)
                 .toList();
 
-        Completable sent = commands.flatMapCompletable(list -> {
-            JsonObject data = new JsonObject().put("available_commands", list);
+        Single<String> result = commands.map(list -> new JsonObject().put("available_commands", list).encodePrettily());
 
-            Future<Message<Void>> received = Future.future();
-            vertx.eventBus().send("print", data, received);
+        result.to(RxAdapter::future).setHandler(handler);
+    }
 
-            return RxAdapter.fromFuture(received).ignoreElement();
-        });
-
-        sent.to(RxAdapter::<Void>future).setHandler(handler);
+    private void shutdown(List<String> args, Handler<AsyncResult<String>> handler) {
+        LOG.info("done");
+        vertx.close();
     }
 
 }
