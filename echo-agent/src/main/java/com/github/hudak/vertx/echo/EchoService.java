@@ -1,19 +1,17 @@
 package com.github.hudak.vertx.echo;
 
+import com.github.hudak.vertx.common.RxAdapter;
 import com.github.hudak.vertx.examples.api.Command;
-import io.reactivex.disposables.Disposables;
+import io.reactivex.Completable;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.eventbus.MessageConsumer;
-import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.servicediscovery.Record;
 import io.vertx.servicediscovery.ServiceDiscovery;
 import io.vertx.servicediscovery.types.EventBusService;
-import io.vertx.serviceproxy.ProxyHelper;
 
 import java.util.List;
 import java.util.UUID;
@@ -37,8 +35,7 @@ public class EchoService extends AbstractVerticle implements Command {
         Record record = EventBusService.createRecord("echo", address, Command.class);
 
         // Register the command
-        MessageConsumer<JsonObject> consumer = ProxyHelper.registerService(Command.class, vertx, this, address);
-        Disposables.fromAction(() -> ProxyHelper.unregisterService(consumer));
+        Command.registerService(vertx, this, address);
 
         // Publish record
         discovery.publish(record, publish);
@@ -50,14 +47,14 @@ public class EchoService extends AbstractVerticle implements Command {
     @Override
     public void stop(Future<Void> stopFuture) throws Exception {
         // Don't forget to clean up
-        Future<Void> unpublish = Future.future();
-        publish.map(Record::getRegistration)
-                .compose(registration -> discovery.unpublish(registration, unpublish), unpublish);
-
-        // Destroys left-over bindings
-        discovery.close();
-
-        unpublish.setHandler(stopFuture);
+        RxAdapter.fromFuture(publish)
+                .map(Record::getRegistration)
+                .flatMap(registration -> RxAdapter.<Void>compose(future -> discovery.unpublish(registration, future)))
+                .ignoreElement()
+                // Destroys left-over bindings
+                .doOnTerminate(discovery::close)
+                // Signal stop when done
+                .to(RxAdapter::<Void>future).setHandler(stopFuture);
     }
 
     @Override

@@ -38,7 +38,8 @@ public class REPL extends AbstractVerticle {
 
     private static void startup(AsyncResult<Vertx> asyncResult) {
         if (asyncResult.succeeded()) {
-            asyncResult.result().deployVerticle(new REPL());
+            Vertx vertx = asyncResult.result();
+            vertx.deployVerticle(new REPL());
         } else {
             LOG.error("Start-up failed", asyncResult.cause());
             System.exit(1);
@@ -117,10 +118,8 @@ public class REPL extends AbstractVerticle {
         Future<List<Record>> records = Future.future();
         serviceDiscovery.getRecords(filter, records);
 
-        Single<List<String>> commands = RxAdapter.fromFuture(records)
-                .flattenAsObservable(list -> list)
-                .map(Record::getName)
-                .toList();
+        Observable<Record> recordObservable = RxAdapter.fromFuture(records).flattenAsObservable(list -> list);
+        Single<List<String>> commands = recordObservable.map(Record::getName).toList();
 
         Single<String> result = commands.map(list -> new JsonObject().put("available_commands", list).encodePrettily());
 

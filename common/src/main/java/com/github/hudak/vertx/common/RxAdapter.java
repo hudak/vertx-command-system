@@ -2,23 +2,22 @@ package com.github.hudak.vertx.common;
 
 import io.reactivex.Completable;
 import io.reactivex.Maybe;
-import io.reactivex.Scheduler;
 import io.reactivex.Single;
-import io.reactivex.schedulers.Schedulers;
-import io.reactivex.subjects.MaybeSubject;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.Vertx;
 
 /**
  * Created by hudak on 6/29/17.
  */
-public class RxAdapter<T> implements Handler<AsyncResult<T>> {
-    public static <T> Maybe<T> fromFuture(Future<T> future) {
-        RxAdapter<T> adapter = new RxAdapter<>();
-        future.setHandler(adapter);
-        return adapter.subject;
+public class RxAdapter {
+    public static <T> Maybe<? extends T> fromFuture(Future<T> future) {
+        return Maybe.<AsyncResult<T>>create(e -> future.setHandler(e::onSuccess)).cache()
+                .flatMap(async -> async.failed() ? Maybe.error(async.cause()) : Maybe.fromCallable(async::result));
+    }
+
+    public static <T> Maybe<? extends T> compose(Handler<Future<T>> handler) {
+        return fromFuture(Future.future(handler));
     }
 
     public static <R> Future<R> future(Maybe<R> single) {
@@ -39,16 +38,6 @@ public class RxAdapter<T> implements Handler<AsyncResult<T>> {
         return future;
     }
 
-    private final MaybeSubject<T> subject = MaybeSubject.create();
-
-    @Override
-    public void handle(AsyncResult<T> event) {
-        if (event.failed()) {
-            subject.onError(event.cause());
-        } else if (event.result() != null) {
-            subject.onSuccess(event.result());
-        } else {
-            subject.onComplete();
-        }
+    private RxAdapter() {
     }
 }
