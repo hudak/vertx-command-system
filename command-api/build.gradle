@@ -2,7 +2,7 @@ dependencies {
     compileOnly "io.vertx:vertx-codegen:$vertxVersion"
 }
 
-def genSrc = project.file('build/src/main/generated')
+def genSrc = project.file('build/generatedSrc/main/java')
 
 task annotationProcessing(type: JavaCompile, group: 'build') { // codegen
     source = sourceSets.main.java
@@ -12,7 +12,6 @@ task annotationProcessing(type: JavaCompile, group: 'build') { // codegen
     options.compilerArgs = [
             "-proc:only",
             "-processor", "io.vertx.codegen.CodeGenProcessor",
-            "-AoutputDirectory=${project.projectDir}/src/main"
     ]
 }
 
