@@ -2,7 +2,6 @@ package com.github.hudak.vertx.echo;
 
 import com.github.hudak.vertx.common.RxAdapter;
 import com.github.hudak.vertx.examples.api.Command;
-import io.reactivex.Completable;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -15,6 +14,7 @@ import io.vertx.servicediscovery.types.EventBusService;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 
 import static java.util.stream.Collectors.joining;
 
@@ -49,7 +49,7 @@ public class EchoService extends AbstractVerticle implements Command {
         // Don't forget to clean up
         RxAdapter.fromFuture(publish)
                 .map(Record::getRegistration)
-                .flatMap(registration -> RxAdapter.<Void>compose(future -> discovery.unpublish(registration, future)))
+                .flatMap(id -> RxAdapter.<Void>fromFuture(future -> discovery.unpublish(id, future)))
                 .ignoreElement()
                 // Destroys left-over bindings
                 .doOnTerminate(discovery::close)

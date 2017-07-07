@@ -34,11 +34,7 @@ public class Main extends AbstractVerticle {
         Record record = EventBusService.createRecord("sparkPi", address, Command.class);
 
         Single<Disposable> register = sparkPi.map(command -> Command.registerService(vertx, command, address));
-        Maybe<Record> publish = Maybe.defer(() -> {
-            Future<Record> future = Future.future();
-            discovery.publish(record, future);
-            return RxAdapter.fromFuture(future);
-        });
+        Maybe<Record> publish = RxAdapter.fromFuture(future -> discovery.publish(record, future));
 
         publish
                 .doOnSuccess(this::setPublishRecord)
