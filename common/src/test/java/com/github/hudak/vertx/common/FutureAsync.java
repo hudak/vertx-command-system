@@ -1,13 +1,10 @@
 package com.github.hudak.vertx.common;
 
-import com.google.common.truth.Truth;
 import io.reactivex.Observable;
 import io.reactivex.Single;
-import io.reactivex.observers.TestObserver;
 import io.reactivex.schedulers.Schedulers;
 import org.junit.Test;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -42,13 +39,13 @@ public class FutureAsync {
 
     @Test
     public void twoCompletableFutures() throws Exception {
-        HashSet<String> names = new HashSet<>();
-
         Observable.range(0, 5)
                 .flatMapSingle(i -> Single.fromCallable(this::getThreadName).subscribeOn(Schedulers.newThread()))
-                .doOnNext(names::add)
-                .ignoreElements().blockingAwait();
-
-        assertThat(names).hasSize(5);
+                // Get distinct thread names
+                .distinct()
+                // Wait for completion
+                .test().await()
+                // Verify size
+                .assertValueCount(5);
     }
 }
